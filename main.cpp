@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #include "utils.h"
 #include "video_extractor.h"
+#include <inttypes.h>
 
 // #define LOG_TAG "VirDevTestDemo"
 
@@ -66,7 +67,6 @@ public:
     }
 };
 
-
 int testCamera(const char *fileName)
 {
 	int ret = 0;
@@ -107,18 +107,24 @@ int testCamera(const char *fileName)
         LOG_E("new mVideoExtractor failed");
     } else {
         videoExtractor->setFrameCallback([&](const uint8_t* yuvBuf, size_t size, int64_t pts) {
+            // LOG_D("on frame callback: size=%zu, pts=%" PRId64 "", size, pts);
             // 处理每一帧视频数据
-            if (g_camStatus == VirtualCameraStatus::kOpenFrontCamera) {
 
+            if (g_camStatus == VirtualCameraStatus::kOpenFrontCamera || g_camStatus == VirtualCameraStatus::kOpenBackCamera) {
                 if (g_cameraFrameSize != size) {
                     ALOGE("frame size is too large");
                     return;
                 }
     
+                // LOG_D("on frame callback: size=%zu, pts=%" PRId64 "", size, pts);
                 // 注入前置摄像头的图像
-                ret = sharedBufferClient->pushFrame(yuvBuf, g_cameraFrameSize, 0);
-                if (ret < 0) {
-                    ALOGE("fill buffer failed");
+                if (sharedBufferClient != nullptr) {
+                    ret = sharedBufferClient->pushFrame(yuvBuf, g_cameraFrameSize, pts);
+                    if (ret < 0) {
+                        ALOGE("fill buffer failed");
+                    }
+                } else {
+                    ALOGE("sharedBufferClient is nullptr");
                 }
             }
         });
@@ -273,12 +279,27 @@ int testCamera(const char *fileName)
 // }
 
 
+bool isVideoFile(const char *fileName) {
+	std::string fileNameStr(fileName);
+	std::string suffix = fileNameStr.substr(fileNameStr.find_last_of(".") + 1);
+    if (suffix == "mp4" || suffix == "mkv" || suffix == "avi" || suffix == "flv" || suffix == "mov" || suffix == "wmv" || suffix == "rmvb" || suffix == "3gp") {
+        return true;
+    }
+    return false;
+}
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		printf("usage: %s <video.mp4>\n", argv[0]);
 		return -1;
 	}
+
+    // 如果文件后缀不是常见的视频类型，则返回错误 
+    if (!isVideoFile(argv[1])) {
+        printf("file format is not supported: %s\n", argv[1]);
+        ALOGE("file format is not supported: %s\n", argv[1]);
+        return -1;
+    }
 
 	std::thread testCameraThread([&]() {
 		int ret = testCamera(argv[1]);

@@ -493,7 +493,7 @@ int MyVideoExtractor::input(void)
                             mCacheFrameCnt++;
                             memcpy(inputBuf, &*mSampleBuf.begin(), bufSize);
                             if (pts == 0) {
-                                LOG_I("------------------------ bufSize=%zu, mCacheFrameCnt=%d, pts=%ld\n", bufSize, mCacheFrameCnt, pts);
+                                LOG_I("bufSize=%zu, mCacheFrameCnt=%d, pts=%ld\n", bufSize, mCacheFrameCnt, pts);
                             }
 
                             media_status_t status = AMediaCodec_queueInputBuffer(decoder, inBufIdx, 0 /* offset */, bufSize, pts, 0);
@@ -509,7 +509,18 @@ int MyVideoExtractor::input(void)
                         }
                         // 读取一帧后必须调用，提取下一帧
                         if (! AMediaExtractor_advance(mVideoExtractor)) {
-                            LOG_E("advance error");
+                            LOG_E("advance failed");
+                            if (!seek && mContinuous) {
+                                LOG_I("------- video: seek to start -------");
+
+                                if (AMediaExtractor_seekTo(mVideoExtractor, 0, AMEDIAEXTRACTOR_SEEK_NEXT_SYNC) != AMEDIA_OK) {
+                                    LOG_E("seek error");
+                                }
+                                // sleep(1);
+                                // mStartTimeUs = mExtractorUtils->now_us();
+                                seek = true;
+                                continue;
+                            }
                         }
                     } else {
                         if (!seek && mContinuous) {
@@ -663,13 +674,21 @@ int MyVideoExtractor::decode(void)
                         memcpy(dst, outputBuf, tmpSize);
 
                         // I420 TO NV21
+                        // int qFrameSize = tmpSize / 4;
+                        // int tempFrameSize = tmpSize * 5 / 4;
+                        // for (int i = 0; i < qFrameSize; i++) {
+                        //     dst[tmpSize + i * 2] = outputBuf[tempFrameSize + i]; // Cb (U)
+                        //     dst[tmpSize + i * 2 + 1] = outputBuf[tmpSize + i]; // Cr (V)
+                        // }
+
+                        // I420 TO NV12
                         int qFrameSize = tmpSize / 4;
                         int tempFrameSize = tmpSize * 5 / 4;
                         for (int i = 0; i < qFrameSize; i++) {
-                            dst[tmpSize + i * 2] = outputBuf[tempFrameSize + i]; // Cb (U)
-                            dst[tmpSize + i * 2 + 1] = outputBuf[tmpSize + i]; // Cr (V)
+                            dst[tmpSize + i * 2] = outputBuf[tmpSize + i]; // Cr (V)
+                            dst[tmpSize + i * 2 + 1] = outputBuf[tempFrameSize + i]; // Cb (U)
                         }
-                        
+
                         sendYuvFrame(yuv_frame);
                     } else {
                         LOG_E("error, tmpSize=%d, mOriFrameSize=%d, mFrameSize=%d", tmpSize, mOriFrameSize, mFrameSize);
@@ -851,6 +870,8 @@ int MyVideoExtractor::sendYuvFrame(const std::shared_ptr<YuvFrame>& frame)
 {
     if (mFrameCallback != nullptr) {
         mFrameCallback(frame->mBuf, frame->mSize, frame->mPts);
+    } else {
+        LOG_E("mFrameCallback is null");
     }
     return 0;
 }
