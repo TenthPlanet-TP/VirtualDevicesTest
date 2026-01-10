@@ -1,0 +1,6 @@
+
+build:
+export PATH=~/disk2/work/tools/android-ndk-r27d::$PATH
+cd jni/
+ndk-build -j20
+
