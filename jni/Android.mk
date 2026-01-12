@@ -11,6 +11,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	../utils.cpp \
 	../video_extractor.cpp \
+	../audio_extractor.cpp \
 	../main.cpp
 
 #../media_extractor_test.cpp \

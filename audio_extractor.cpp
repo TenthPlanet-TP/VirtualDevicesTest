@@ -18,10 +18,10 @@
 #include "utils.h"
 
 
-#ifdef MODULE_NAME
-#undef MODULE_NAME
-#endif
-#define MODULE_NAME "AudioExtractor"
+// #ifdef MODULE_NAME
+// #undef MODULE_NAME
+// #endif
+// #define MODULE_NAME "AudioExtractor"
 
 
 // #define TIMEOUT_US      5000
@@ -46,8 +46,6 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-
-using namespace android;
 
 
 MyAudioExtractor::MyAudioExtractor()
@@ -298,6 +296,20 @@ int MyAudioExtractor::audioExtractorThread(void)
     // }
 
     mThreadState = ThreadState::RUNNING;
+
+    pthread_setname_np(pthread_self(), "aExtractor");    // 注意设置的线程名字不能超过15个字符
+
+    int64_t last_read_time_us = 0;
+
+    int mFrameCount;
+    int mLastFrameCount = 0;
+    uint64_t mLastFpsTime = 0;
+    float mFps = 0;
+
+    // 48000 / 960 = 50
+    // 44100 / 1024 = 43.2
+    // int frameRateFps = mSampleRate / mPeriodSize;
+
     while (mThreadState == ThreadState::RUNNING) {
 #if 1
         // if (mIsPause || !mPlay) {
@@ -335,6 +347,9 @@ int MyAudioExtractor::audioExtractorThread(void)
             LOG_I("wake up ..., mSleepTimeUs=%ld", mSleepTimeUs);
         }
 #endif
+
+        Utils::controlFrameRate(last_read_time_us, mSampleRate / (mPeriodSize > 0 ? mPeriodSize : 1024));
+        Utils::debugShowFPS("audio", mFrameCount, mLastFrameCount, mLastFpsTime, mFps);
 
         ret = input();
         if (ret < 0) {
@@ -385,14 +400,8 @@ int MyAudioExtractor::input(void)
     int ret = 0;
     AMediaCodec *decoder = mAudioDecoder;
 
-    size_t pcm_queue_size = getPcmQueueSize();
-
     if (mInputEof) {
         return 0;
-    } else if (pcm_queue_size >= MAX_PCM_QUE_SIZE) {
-        LOG_D("pcm queue size(%zu) is too large, so pause input", pcm_queue_size);
-        mCache = false;
-        return 1;
     }
 
 #if 1
@@ -447,10 +456,23 @@ int MyAudioExtractor::input(void)
                         }
 
                         // 读取一帧后必须调用，提取下一帧
-                        AMediaExtractor_advance(mExtractor);
+                        if (! AMediaExtractor_advance(mExtractor)) {
+                            LOG_E("advance failed");
+                            if (!seek && mContinuous) {
+                                LOG_I("------- audio: seek to start -------");
+
+                                if (AMediaExtractor_seekTo(mExtractor, 0, AMEDIAEXTRACTOR_SEEK_NEXT_SYNC) != AMEDIA_OK) {
+                                    LOG_E("seek error");
+                                }
+                                // sleep(1);
+                                // mStartTimeUs = mExtractorUtils->now_us();
+                                seek = true;
+                                continue;
+                            }
+                        }
                     } else {
                         if (!seek && mContinuous) {
-                            LOG_I("audio---------------------------seek to start---------------------------");
+                            LOG_I("------- audio: seek to start -------");
 
                             if (AMediaExtractor_seekTo(mExtractor, 0, AMEDIAEXTRACTOR_SEEK_NEXT_SYNC) != AMEDIA_OK) {
                                 LOG_E("seek error");
@@ -556,10 +578,10 @@ int MyAudioExtractor::decode(void)
                     int16_t periodSize = info.size / mChannelCount / 2;
                     if (mPeriodSize != periodSize) {
                         mPeriodSize = periodSize;
-                        char pcm_config[24];
-                        snprintf(pcm_config, ARRAY_SIZE(pcm_config), "%d.%d", mSampleRate, mPeriodSize);
-                        LOG_I("set pcm config: %s", pcm_config);
-                        property_set("vir.audio.pcm_config_in", pcm_config);
+                        // char pcm_config[24];
+                        // snprintf(pcm_config, ARRAY_SIZE(pcm_config), "%d.%d", mSampleRate, mPeriodSize);
+                        // LOG_I("set pcm config: %s", pcm_config);
+                        // property_set("vir.audio.pcm_config_in", pcm_config);
                     }
                     std::shared_ptr<PcmFrame> pcm_frame = std::make_shared<PcmFrame>(info.size, info.presentationTimeUs);
 
@@ -669,34 +691,15 @@ int MyAudioExtractor::decode(void)
     return ret;
 }
 
-size_t MyAudioExtractor::getPcmQueueSize(void)
-{
-    sp<AacDecodeBase> aacDecodeBase = mAacDecodeBase.promote();
-    if (aacDecodeBase != nullptr) {
-        return aacDecodeBase->getQueueSize();
-    }
-    return -1;
-}
-
 int MyAudioExtractor::sendPcmFrame(const std::shared_ptr<PcmFrame>& frame)
 {
-    sp<AacDecodeBase> aacDecodeBase = mAacDecodeBase.promote();
-    if (aacDecodeBase != nullptr) {
-        aacDecodeBase->pushQueue(frame, mCache);
+    if (mFrameCallback != nullptr) {
+        mFrameCallback(frame->mBuf, frame->mSize, frame->mPts);
     } else {
-        LOG_E("aacDecodeBase does not exist");
+        LOG_E("mFrameCallback is null");
     }
     return 0;
 }
-
-void MyAudioExtractor::clearPcmFrame(void)
-{
-    sp<AacDecodeBase> aacDecodeBase = mAacDecodeBase.promote();
-    if (aacDecodeBase != nullptr) {
-        aacDecodeBase->clearQueueSafe();
-    }
-}
-
 
 /**
  * 是否处于播放状态
@@ -789,14 +792,12 @@ void MyAudioExtractor::releaseInner(void)
         mExtractor = nullptr;
     }
 
-    clearPcmFrame();
-
     // if (m_fp != nullptr) {
     //     fclose(m_fp);
     //     m_fp = nullptr;
     // }
 
-    property_set("vir.audio.pcm_config_in", "");
+    // property_set("vir.audio.pcm_config_in", "");
 
     mSleepTimeUs = 0;
     mStartTimeUs = 0;

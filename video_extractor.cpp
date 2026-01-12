@@ -52,10 +52,10 @@
 
 
 
-// #define FIXED_WIDTH         1280
-// #define FIXED_HEIGHT        720
-#define FIXED_WIDTH         1920
-#define FIXED_HEIGHT        1080
+// #define MAX_WIDTH         1280
+// #define MAX_HEIGHT        720
+#define MAX_WIDTH         1920
+#define MAX_HEIGHT        1080
 #define MAX_VIDEO_FPS       30
 
 
@@ -210,7 +210,7 @@ int MyVideoExtractor::create(const char *fileName, bool continuous)
                 mWidth, mHeight, mWidthStride, mDurationUs, mMaxInputSize, mRotationDegrees);
 
 #if 1
-        if (mWidth < 0 || mWidth > 1920 || mHeight < 0 || mHeight > 1920) {
+        if (mWidth < 0 || mWidth > MAX_WIDTH || mHeight < 0 || mHeight > MAX_HEIGHT) {
             LOG_E("set camera width/heigth failed (%dx%d), must be small than 1920x1080", mWidth, mHeight);
             AMediaFormat_delete(mVideoFmt);
             AMediaExtractor_delete(mVideoExtractor);
@@ -271,9 +271,9 @@ int MyVideoExtractor::create(const char *fileName, bool continuous)
             return -1;
         }
 
-        char cam_config[48];
-        snprintf(cam_config, ARRAY_SIZE(cam_config), "%dx%d@%d-live", mWidth, mHeight, mFrameRateFps);
-        LOG_I("set camera config: %s", cam_config);
+        // char cam_config[48];
+        // snprintf(cam_config, ARRAY_SIZE(cam_config), "%dx%d@%d-live", mWidth, mHeight, mFrameRateFps);
+        // LOG_I("set camera config: %s", cam_config);
 
         // property_set("vir.camera.config", cam_config);
         // // property_set("vir.camera.live", "true");
@@ -353,7 +353,6 @@ int MyVideoExtractor::videoExtractorThread(void)
 
     pthread_setname_np(pthread_self(), "vExtractor");    // 注意设置的线程名字不能超过15个字符
 
-
     int64_t last_read_time_us = 0;
 
     int mFrameCount;
@@ -399,8 +398,7 @@ int MyVideoExtractor::videoExtractorThread(void)
         }
 #endif
 
-        static int64_t last_read_time_us = 0;
-        Utils::controlFrameRate(last_read_time_us, 30);
+        Utils::controlFrameRate(last_read_time_us, mFrameRateFps);
         Utils::debugShowFPS("camera", mFrameCount, mLastFrameCount, mLastFpsTime, mFps);
 
         ret = input();

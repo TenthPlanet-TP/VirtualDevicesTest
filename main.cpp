@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #include "utils.h"
 #include "video_extractor.h"
+#include "audio_extractor.h"
 #include <inttypes.h>
 
 // #define LOG_TAG "VirDevTestDemo"
@@ -27,6 +28,7 @@ static size_t g_cameraHeight = 0;
 static int g_cameraFrameRate = 0;
 
 static int g_micFrameRate = 0;
+static size_t g_micFrameSize = 0;
 
 static bool g_MicrophoneCrash = false;
 static bool g_CameraCrash = false;
@@ -54,6 +56,7 @@ public:
 			g_cameraFrameRate = val3;
 		} else if (msgType == VirtualDeviceType::kVirMicrophone) {
 			g_micStatus = status;
+			g_micFrameSize = val2 * val3 *  2;
 			g_micFrameRate = val1 / val3;
 		} else if (msgType == VirtualDeviceType::kVirDevicesCrash) {
 			if (status == VirtualDeviceType::kVirCamera) {
@@ -153,130 +156,95 @@ int testCamera(const char *fileName)
 	return 0;
 }
 
-// int testMicrophone(const char *fileName)
-// {
-// 	int ret = 0;
-// 	constexpr size_t frameSize = 960 * 2 * 2;
-// 	uint8_t pcmBbuf[frameSize];
+int testMicrophone(const char *fileName)
+{
+	int ret = 0;
+	constexpr size_t frameSize = 960 * 2 * 2;
+	uint8_t pcmBbuf[frameSize];
 
-// 	ALOGD("test Microphone");
+	ALOGD("test Microphone");
 
-//  	FILE *fp = fopen(fileName, "rb");
-// 	if (fp == nullptr) {
-// 		printf("open %s failed\n", fileName);
-// 		return -1;
-// 	}
 
-// 	SharedBufferClientInterface* sharedBufferClient = createSharedBufferClient(VirtualDeviceType::kVirMicrophone);
-//     if (sharedBufferClient == nullptr) {
-// 		ALOGE("createSharedBufferClient failed");
-//         return -1;
-//     }
+	SharedBufferClientInterface* sharedBufferClient = createSharedBufferClient(VirtualDeviceType::kVirMicrophone);
+    if (sharedBufferClient == nullptr) {
+		ALOGE("createSharedBufferClient failed");
+        return -1;
+    }
 
-// 	ret = sharedBufferClient->connect();
-// 	if (ret < 0) {
-// 		releaseSharedBufferClient(sharedBufferClient);
-// 		ALOGE("connect shared buffer failed");
-// 		return -1;
-// 	}
+	ret = sharedBufferClient->connect();
+	if (ret < 0) {
+		releaseSharedBufferClient(sharedBufferClient);
+		ALOGE("connect shared buffer failed");
+		return -1;
+	}
 
-// 	// 测试接口 (非必须调用)
-// 	uint8_t status = sharedBufferClient->getVirDeviceStatus();
-// 	ALOGD("get vir mic status: %d", status);
+	// 测试接口 (非必须调用)
+	uint8_t status = sharedBufferClient->getVirDeviceStatus();
+	ALOGD("get vir mic status: %d", status);
 
-// 	uint32_t val1 = 0;
-// 	uint32_t val2 = 0;
-// 	uint32_t val3 = 0;
-// 	// 测试接口 (非必须调用)
-// 	ret = sharedBufferClient->getVirDeviceInfo(status, val1, val2, val3);
-// 	if (ret >= 0) {
-// 		ALOGD("get vir mic info: %d, %d, %d, %d", status, val1, val2, val3);
-// 	}
+	uint32_t val1 = 0;
+	uint32_t val2 = 0;
+	uint32_t val3 = 0;
+	// 测试接口 (非必须调用)
+	ret = sharedBufferClient->getVirDeviceInfo(status, val1, val2, val3);
+	if (ret >= 0) {
+		ALOGD("get vir mic info: %d, %d, %d, %d", status, val1, val2, val3);
+	}
 
-// 	// 注册回调 (调用一种即可)
-// #if 0
-// 	sharedBufferClient->setNotifyCallback([&](uint8_t msgType, uint8_t status, int32_t val1, int32_t val2, int32_t val3) {
-// 		ALOGD("msgType=%d, status=%d, val1=%d, val2=%d, val3=%d", msgType, status, val1, val2, val3);
-// 		// 此时，应该通知真实摄像头或真实麦克风，打开设备
-// 		// 比如: 创建一个 Message 再 sendMessage 到其他线程处理。切记：千万不要阻塞回调线程，以防止意想不到的问题。
-// 		// Message m = mEventHandler.obtainMessage(msgType, status, val1, val2, val3);
-// 		// mEventHandler.sendMessage(m);
-// 		// return;
-// 	});
-// #elif 1
-// 	sharedBufferClient->setNotifyCallback(onNotifyCallbackTest);
-// #elif 0
-// 	sharedBufferClient->setNotifyCallback(
-// 		std::bind(onNotifyCallbackTest, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
-// #else
-//     NotifyCallbackListener *listener = new NotifyCallbackListenerImpl();
-//     sharedBufferClient->registerCallback(listener);
-// #endif
+    NotifyCallbackListener *listener = new NotifyCallbackListenerImpl();
+    sharedBufferClient->registerCallback(listener);
 
-// 	/////////////////// 以下仅为测试代码 ///////////////////////
-// 	while (g_loop) {
-// 		// usleep(20000);
-// 		static int64_t last_read_time_us = 0;
-// 		controlFrameRate(last_read_time_us, (g_micFrameRate > 0) ? g_micFrameRate : 50);
-// 		// static int mFrameCount;
-// 		// static int mLastFrameCount = 0;
-// 		// static uint64_t mLastFpsTime = 0;
-// 		// static float mFps = 0;
-// 		// debugShowFPS("mic", mFrameCount, mLastFrameCount, mLastFpsTime, mFps);
+	std::unique_ptr<MyAudioExtractor> audioExtractor = std::make_unique<MyAudioExtractor>();
+    if (audioExtractor == nullptr) {
+        LOG_E("new mVideoExtractor failed");
+    } else {
+        audioExtractor->setFrameCallback([&](const uint8_t* pcmBuf, size_t size, int64_t pts) {
+            // LOG_D("on frame callback: size=%zu, pts=%" PRId64 "", size, pts);
+            // 处理每一帧视频数据
 
-// 		if (g_MicrophoneCrash) {
-// 			// 如果收到 audio crash 通知，正确的做法应该是，创建一个线程来重连 sharedBuffer
-// 			sleep(2);	// 等待 audio 进程重新启动
-// 			if (sharedBufferClient != nullptr) {
-// 				ALOGD("reconnect shared buffer ...");
-// 				ret = sharedBufferClient->connect();
-// 				if (ret < 0) {
-// 					ALOGE("connect shared buffer failed");
-// 					continue;
-// 				}
-// 				sharedBufferClient->setNotifyCallback(onNotifyCallbackTest);
-// 				ALOGD("reconnect shared buffer success");
-// 				g_MicrophoneCrash = false;
+            if (g_micStatus > 0 ) {
+                if (g_micFrameSize != size) {
+                    ALOGE("frame size is too large, %zu, %zu", g_micFrameSize, size);
+                    return;
+                }
 
-// 				uint8_t status = sharedBufferClient->getVirDeviceStatus();
-// 				ALOGD("get vir mic status: %d", status);
-// 				g_micStatus = status;
-// 			} else {
-// 				ALOGE("sharedBufferClient is null");
-// 				return -1;
-// 			}
-// 		}
+                // LOG_D("on frame callback: size=%zu, pts=%" PRId64 "", size, pts);
+                // 注入前置摄像头的图像
+                if (sharedBufferClient != nullptr) {
+                    ret = sharedBufferClient->pushFrame(pcmBuf, g_micFrameSize, pts);
+                    if (ret < 0) {
+                        ALOGE("fill buffer failed");
+                    }
+                } else {
+                    ALOGE("sharedBufferClient is nullptr");
+                }
+            }
+        });
 
-// 		if (g_micStatus > 0) {
-// 			if (feof(fp)) {
-// 				// break;
-// 				fseek(fp, 0, SEEK_SET);
-// 				continue;
-// 			}
-// 			fread(pcmBbuf, frameSize, 1, fp);
+        ret = audioExtractor->create(fileName, true);
+    }
 
-// 			ret = sharedBufferClient->pushFrame(pcmBbuf, frameSize, 0);
-// 			if (ret < 0) {
-// 				ALOGE("fill buffer failed");
-// 			}
-// 		}
-// 	}
-// 	//////////////////////////////////////////////////////////////
+	/////////////////// 以下仅为测试代码 ///////////////////////
+	while (g_loop) {
+		sleep(1);
+	}
+	//////////////////////////////////////////////////////////////
 
-// 	// sharedBufferClient->unregisterCallback(listener);
-// 	// delete listener;
+	if (audioExtractor != nullptr) {
+        audioExtractor->release();
+    }
 
-// 	sharedBufferClient->disconnect();
+    if (listener != nullptr) {
+        sharedBufferClient->unregisterCallback(listener);
+        delete listener;
+    }
 
-// 	releaseSharedBufferClient(sharedBufferClient);
+	sharedBufferClient->disconnect();
 
-// 	if (fp != nullptr) {
-// 		fclose(fp);
-// 		fp = nullptr;
-// 	}
+	releaseSharedBufferClient(sharedBufferClient);
 
-// 	return 0;
-// }
+	return 0;
+}
 
 
 bool isVideoFile(const char *fileName) {

@@ -17,28 +17,18 @@
 #include <map>
 #include <atomic>
 
-#if defined(BOARD_RK3399_7_X)
+#if 0
 #include <ndk/NdkMediaCodec.h>
 #include <ndk/NdkMediaFormat.h>
 #include <ndk/NdkMediaExtractor.h>
-#elif defined(GENERAL_SYS_10) || defined(BOARD_RK3588_12)
+#elif 1
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
 #include <media/NdkMediaExtractor.h>
 
 #endif
 
-#include <utils/Log.h>
-#include <log/log.h>
 
-
-#include "aac_decode_base.h"
-#include "media_source_interface.h"
-
-
-using namespace Company;
-
-namespace android {
 
 // struct CodecState {
 //     sp<MediaCodec> mCodec;
@@ -51,9 +41,34 @@ namespace android {
 //     bool mIsAudio;
 // };
 
+struct PcmFrame {
+    PcmFrame(size_t size, int64_t pts = -1, bool cache = true)
+        : mBuf(new unsigned char[size])
+        , mSize(size)
+        , mPts(pts)
+        , mCachable(cache)
+    {
+        // ALOGD("PcmFrame ctor called");
+    }
+
+    ~PcmFrame() {
+        //  ALOGD("dtor YuvFrame called");
+        if (mBuf != nullptr) {
+            delete[] mBuf;
+            mBuf = nullptr;
+        }
+    }
+
+    unsigned char *mBuf;
+    size_t mSize;
+    int64_t mPts;
+    bool mCachable;
+};
 
 class MyAudioExtractor {
 public:
+    using FrameCallback = std::function<void(const uint8_t *frameBuf, size_t frameSize, int64_t pts)>;
+
 	MyAudioExtractor();
 	~MyAudioExtractor(void);
 
@@ -61,15 +76,11 @@ public:
     
     int release(void);
 
-    void setPcmHelper(const android::wp<AacDecodeBase>& aacDecode) {
-        mAacDecodeBase = aacDecode;
+    void setFrameCallback(const FrameCallback& callback) {
+        mFrameCallback = callback;
     }
 
     int sendPcmFrame(const std::shared_ptr<PcmFrame>& frame);
-    
-    size_t getPcmQueueSize(void);
-
-    void clearPcmFrame(void);
 
     int fastForward(int64_t duration);
 
@@ -97,10 +108,7 @@ private:
     // AMediaCodec* mDecoder = nullptr;
     AMediaCodec* mAudioDecoder = nullptr;
 
-    android::wp<AacDecodeBase> mAacDecodeBase;
-
 	int mAudioTrack = -1;
-
 
 	int32_t mSampleRate = -1;
 	int32_t mChannelCount = -1;
@@ -146,8 +154,9 @@ private:
     int mCacheFrameCnt;
     bool mCache;
     int64_t mIsFirstFramePts;
+
+    FrameCallback mFrameCallback;
 };
 
-};
 
 #endif
