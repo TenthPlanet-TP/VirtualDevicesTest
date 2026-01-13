@@ -33,6 +33,17 @@ static size_t g_micFrameSize = 0;
 static bool g_MicrophoneCrash = false;
 static bool g_CameraCrash = false;
 
+static void handleSignal(int signo)
+{
+    if (SIGINT == signo || SIGTSTP == signo)
+    {
+        printf("\033[0;31mprogram termination abnormally!\033[0;39m\n");
+        g_loop = false;
+    }
+    // exit(-1);
+}
+
+
 class NotifyCallbackListenerImpl : public NotifyCallbackListener {
 public:
     NotifyCallbackListenerImpl() {}
@@ -261,6 +272,9 @@ int main(int argc, char **argv) {
 		printf("usage: %s <video.mp4>\n", argv[0]);
 		return -1;
 	}
+
+	signal(SIGINT, handleSignal);
+	signal(SIGTERM, handleSignal);
 
     // 如果文件后缀不是常见的视频类型，则返回错误 
     if (!isVideoFile(argv[1])) {
