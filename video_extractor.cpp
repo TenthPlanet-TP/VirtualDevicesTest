@@ -54,8 +54,8 @@
 
 // #define MAX_WIDTH         1280
 // #define MAX_HEIGHT        720
-#define MAX_WIDTH         1920
-#define MAX_HEIGHT        1080
+#define MAX_WIDTH         8688
+#define MAX_HEIGHT        5792
 #define MAX_VIDEO_FPS       30
 
 
@@ -211,7 +211,7 @@ int MyVideoExtractor::create(const char *fileName, bool continuous)
 
 #if 1
         if (mWidth < 0 || mWidth > MAX_WIDTH || mHeight < 0 || mHeight > MAX_HEIGHT) {
-            LOG_E("set camera width/heigth failed (%dx%d), must be small than 1920x1080", mWidth, mHeight);
+            LOG_E("set camera width/heigth failed (%dx%d), must be small than %dx%d", mWidth, mHeight, MAX_WIDTH, MAX_HEIGHT);
             AMediaFormat_delete(mVideoFmt);
             AMediaExtractor_delete(mVideoExtractor);
             return -1;
