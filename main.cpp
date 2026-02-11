@@ -199,6 +199,9 @@ int testMicrophone(const char *fileName)
 	ret = sharedBufferClient->getVirDeviceInfo(status, val1, val2, val3);
 	if (ret >= 0) {
 		ALOGD("get vir mic info: %d, %d, %d, %d", status, val1, val2, val3);
+		g_micStatus = status;
+		g_micFrameSize = val2 * val3 *  2;
+		g_micFrameRate = val1 / val3;
 	}
 
     NotifyCallbackListener *listener = new NotifyCallbackListenerImpl();
