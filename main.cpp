@@ -100,17 +100,16 @@ int testCamera(const char *fileName)
 		return -1;
 	}
 
-	// 测试接口 (非必须调用)
-	uint8_t status = sharedBufferClient->getVirDeviceStatus();
-	ALOGD("get vir camera status: %d", status);
-
+	uint8_t status = 0;
 	uint32_t val1 = 0;
 	uint32_t val2 = 0;
 	uint32_t val3 = 0;
-	// 测试接口 (非必须调用)
 	ret = sharedBufferClient->getVirDeviceInfo(status, val1, val2, val3);
 	if (ret >= 0) {
 		ALOGD("get vir camera info: %d, %d, %d, %d", status, val1, val2, val3);
+		g_camStatus = status;
+		g_cameraFrameSize = val1 * val2 * 3 / 2;
+		g_cameraFrameRate = val3;
 	}
 
     NotifyCallbackListener *listener = new NotifyCallbackListenerImpl();
@@ -273,8 +272,8 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	signal(SIGINT, handleSignal);
-	signal(SIGTERM, handleSignal);
+	// signal(SIGINT, handleSignal);
+	// signal(SIGTERM, handleSignal);
 
     // 如果文件后缀不是常见的视频类型，则返回错误 
     if (!isVideoFile(argv[1])) {
